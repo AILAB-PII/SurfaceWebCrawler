@@ -2,13 +2,11 @@ import time
 import re
 import os
 import mysql.connector
-import os
 from selenium import webdriver
 from time import sleep
 from bs4 import BeautifulSoup
 import requests
 from fake_useragent import UserAgent
-import os
 ua = UserAgent()
 import random
 

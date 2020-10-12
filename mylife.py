@@ -32,11 +32,6 @@ def insert_post(post_record):
     if 'None' in post_record['name']:
         return
 
-    args = (post_record['query_name'], post_record['query_city'], post_record['platform'], post_record['name'],
-            post_record['age'], post_record['city'], post_record['state'], post_record['address'],
-            post_record['reputation'],
-            post_record['associated_Names'], post_record['alias'], post_record['description'])
-
     if ',' in post_record['address']:
         post_record['address'] = post_record['address'].replace(',', '-')
 
@@ -48,6 +43,11 @@ def insert_post(post_record):
 
     if '•' in post_record['associated_Names']:
         post_record['associated_Names'] = post_record['associated_Names'].replace('•', '---')
+    
+    args = (post_record['query_name'], post_record['query_city'], post_record['platform'], post_record['name'],
+            post_record['age'], post_record['city'], post_record['state'], post_record['address'],
+            post_record['reputation'],
+            post_record['associated_Names'], post_record['alias'], post_record['description'])
 
     cnx.cursor().execute(query, args)
     cnx.commit()

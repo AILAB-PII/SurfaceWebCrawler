@@ -1,135 +1,98 @@
-from torrequest import TorRequest
-import os, random
+from selenium import webdriver
+from time import sleep
+import datetime
+from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 import time
-import threading
-import queue as Queue
 from bs4 import BeautifulSoup
-import mysql.connector
+from flask import Flask, g
+from flask_restful import reqparse, Api, Resource
+from selenium.webdriver.firefox.options import Options
+import os
 
-cnx = mysql.connector.connect(user='root', password='SaTc!2020',
-                            host='localhost', database='pii')
-agents = []
-cookies = []
-headers = {}
-tor = TorRequest(password='satc2020')
-
-
-#
-# class myThread(threading.Thread):
-#     def __init__(self, name, queue):
-#         threading.Thread.__init__(self)
-#         self.name = name
-#         self.queue = queue
-#
-#     def run(self):
-#         while True:
-#             try:
-#                 save_content(self.name, self.queue)
-#             except Exception as err:
-#                 print("Exception from thread run", self.getName(), ': ', err)
-#                 break
+fp = webdriver.FirefoxProfile()
+PROXY_HOST = "127.0.0.1"
+PROXY_PORT = 9150
+fp.set_preference("network.proxy.type", 1)
+fp.set_preference("network.proxy.socks", PROXY_HOST)
+fp.set_preference("network.proxy.socks_port", PROXY_PORT)
+fp.set_preference("network.proxy.socks_remote_dns", True)
+fp.accept_untrusted_certs = True
+firefox_capabilities = DesiredCapabilities.FIREFOX
+firefox_capabilities['marionette'] = True
+options = Options()
+options.add_argument('-headless')
 
 
-def init():
-    global cookies
-    global headers
-    global agents
+app = Flask(__name__)
+api = Api(app)
 
-    with open('/home/spider/pii/mylife/config/useragents', 'r') as f:
-        lines = f.readlines()
-    agents = [i.replace('\n', '') for i in lines]
-    f.close()
+parser_put = reqparse.RequestParser()
+parser_put.add_argument("name", type=str, required=True, help="need full name data")
+parser_put.add_argument("state", type=str, required=False, help="need state name (optional)")
 
-    with open('/home/spider/pii/mylife/config/cookies', 'r') as f:
-        lines = f.readlines()
-    cookies = [i.replace('\n', '') for i in lines]
+origin_data = {}
+result = []
 
-    headers = {
-        'Cookie': '{:}'.format("JSESSIONID=5141585B5B11424B1E1844BA37080E85; mylife_marketing_channel=SEO; "
-                               "_ga=GA1.2.1122882368.1592191143; _gid=GA1.2.127403464.1592191143; "
-                               "_gcl_au=1.1.1916513121.1592191143; "
-                               "__CG=u%3A541777163072038900%2Cs%3A1856218148%2Ct%3A1592191176820%2Cc%3A3%2Ck%3Awww"
-                               ".mylife.com%2F47%2F47%2F393%2Cf%3A1%2Ci%3A1; _gat_UA-73309658-5=1; "
-                               "_gat_UA-73309658-1=1; _dc_gtm_UA-73309658-5=1; _fbp=fb.1.1592191147079.1966496629; "
-                               "_uetsid=ec60c5c1-9592-bcc2-f7c1-634e8c69c61c; "
-                               "_uetvid=b67ddb1d-17f5-28c9-ae59-061ed0e3118e"),
-        'User-Agent': '{}'.format(random.choice(agents))
-    }
-    f.close()
-    tor_reset()
+# put your geckodriver path at here
+
+executable_path = r'C:\Users\spider\Desktop\geckodriver.exe'
+
+def restartfirefox():
+    os.system('taskkill /IM firefox.exe')
+    os.system('taskkill /IM tor.exe')
+    sleep(3)
+    # pur your tor path at here
+    os.popen('''"C:\\Users\\spider\\Desktop\\Start Tor Browser.lnk" | more''')
+    sleep(5)
 
 
-def tor_reset():
-    global tor
-    tor.close()
-    tor = TorRequest(password='satc2020')
-    time.sleep(2)
+def save_content_beenverified(soup, name):
+    global result
+    extractedValues = {'query_name': name, 'platform': 'Beenverified', 'name': 'None', 'age': 'None',
+                       'city': 'None', 'state': 'None', 'address': 'None', 'phone_num': 'None',
+                       'relatives': 'None', 'email': 'None', 'previous_location': 'None', 'job_title': 'None'}
     try:
-        tor.reset_identity()
-    except:
-        tor.close()
-        tor = TorRequest(password='satc2020')
-        tor.reset_identity()
-    response = tor.get('http://ipecho.net/plain')
-    print("---------Ip Address has changed: ", response.text + '---------')
-
-
-def insert_post(post_record):
-    print("saved to mysql")
-
-
-def visit_page(infors):
-    global headers
-    global tor
-
-    items = infors.split(',')
-    print(str(items))
-    query_name = items[0]
-    query_city = items[1]
-    url = items[2].strip('\n')
-    print(url)
-    try:
-        request = tor.get(url, headers=headers, timeout=(2, 5))
+        list = soup.find('div', {'class': "list"})
+        items = list.find_all('div', {'class': "search-result card"})
+        for eachone in items:
+            try:
+                name_location = eachone.find('div', {'class': 'search-result__title'}).text
+                name_location_list = name_location.split("|")
+                name = name_location_list[0].strip(" ")
+                location = name_location_list[1]
+                city_state = location.split(", ")
+                city = city_state[0]
+                state = city_state[1]
+                extractedValues['name'] = name.replace('\n', '')
+                extractedValues['city'] = city.replace('\n', '')
+                extractedValues['state'] = state.replace('\n', '')
+                print("1")
+            except Exception as err:
+                print(str(err))
+                pass
+            result.append(extractedValues)
     except Exception as err:
-
-        with open('/home/spider/pii/mylife/config/err_log', 'a') as f:
-            f.write(str(err) + '\n')
-        if 'read' in str(err):
-            print('---------Read timeout---------' + '\n')
-        f.close()
-        init()
-        tor_reset()
+        print(str(err))
+        result.append("No records in Beenverfied")
         return
 
-    if request.status_code == 200:
-        soup = BeautifulSoup(request.text, 'lxml', from_encoding='utf8')
-        save_content(soup, query_name, query_city)
-    else:
-        with open('/home/spider/pii/mylife/config/err_log', 'a') as f:
-            f.write(str(request.status_code) + '\n')
-        f.close()
-        init()
-        tor_reset()
-        soup = BeautifulSoup(request.content, 'html.parser')
-        save_content(soup, query_name, query_city)
 
-
-def save_content(soup, query_name, query_city):
-    global tor
-    extractedValues = {'query_name': query_name, 'query_city': query_city, 'platform': 'MyLife', 'name': 'None', 'age': 'None',
+def save_content_mylife(soup, name):
+    global result
+    extractedValues = {'query_name': name, 'platform': 'MyLife', 'name': name, 'age': 'None',
                        'city': 'None', 'state': 'None', 'address': 'None', 'reputation': 'None',
-                       'neighbors': 'None', 'associated_Names': 'None', 'description': 'None'}
+                       'alias': 'None', 'associated_Names': 'None', 'description': 'None'}
     try:
-        section = soup.find('div', {'class': 'vcard-first-section'})
+        section = soup.find('div', {'class': 'vcard-container'})
         name_age_list = section.find('h2', {'class': 'profile-information-name-age'}).text
         name_age = name_age_list.split(', ')
         name = name_age[0]
         age = name_age[1].rstrip()
         extractedValues['name'] = name
         extractedValues['aga'] = age
-        print("1")
-    except Exception as err:
-        print(str(err))
+    except:
+        pass
+    if 'None' in extractedValues['name']:
         try:
             items = soup.find_all('div', {'class': 'profile-card'})
             for eachone in items:
@@ -149,8 +112,8 @@ def save_content(soup, query_name, query_city):
                     if 'Lives in ' in city_state:
                         city_state = city_state.replace('Lives in ', '')
                     temp_lit = city_state.split('\n')
-                    city = temp_lit[0].replace('\n', '').replace('\n', '')
-                    state = temp_lit[1]
+                    city = temp_lit[0].replace('\n', '')
+                    state = temp_lit[1].replace(' ', '')
                     extractedValues['name'] = name
                     extractedValues['city'] = city
                     extractedValues['state'] = state
@@ -191,9 +154,9 @@ def save_content(soup, query_name, query_city):
                     pass
                 print('-----------------------------------------------------------------')
                 print(extractedValues['name'])
-                insert_post(extractedValues)
-            return
+                result.append(extractedValues)
         except Exception as err:
+            print(str(err))
             return
     try:
         location = soup.find('h2', {'class': 'profile-information-location'}).text
@@ -226,42 +189,82 @@ def save_content(soup, query_name, query_city):
         pass
 
     try:
-        print('5')
         des = soup.find('div', {'class': 'profile-bio-container'}).text
         des = des.replace('Summary:', '')
-        extractedValues['relatives'] = des
-        if ',' in extractedValues['relatives']:
-            extractedValues['relatives'] = extractedValues['relatives'].replace(', ', '-')
-    except Exception as err:
-        print(str(err) + '1')
+        extractedValues['description'] = des
+        if ',' in extractedValues['description']:
+            extractedValues['description'] = extractedValues['description'].replace(', ', '-')
+    except:
         pass
-
-    print(extractedValues['name'])
-    insert_post(extractedValues)
+    result.append(extractedValues)
 
 
-if __name__ == '__main__':
-    init()
-    tor_reset()
-    with open('/home/spider/pii/mylife/config/stop_point', 'r') as f:
-        line = f.readline()
-    start_point = int(line.replace('\n', ''))
-    f.close()
+restartfirefox()
 
-    with open('/home/spider/pii/config/saved_url_senior', 'r') as f:
-        lines = f.readlines()
-    url_list = [i.replace('\n', '') for i in lines]
-    url_list = url_list[1:]
-    f.close()
 
-    num = start_point
-    print("Start from : " + str(start_point) + "\n" + "End at : " + str(len(url_list)))
-    for item in url_list:
-        visit_page(item)
-        print(str(num))
-        num += 1
-        if num % 70 == 0:
-            with open('/home/spider/pii/mylife/config/stop_point', 'w') as f:
-                f.write(str(num))
-            f.close()
-    print("End")
+def get_url(name, state):
+    global browser
+    print(datetime.datetime.now())
+    browser = webdriver.Firefox(firefox_profile=fp, capabilities=firefox_capabilities, options=options,
+                                executable_path=executable_path)
+    browser.delete_all_cookies()
+    browser.set_page_load_timeout(30)
+    browser.set_script_timeout(30)
+    if state == '':
+        url_mylife = 'https://www.mylife.com/{}/'.format(name.replace(" ", "-"))
+        url_beenverified = 'https://www.beenverified.com/people/{}/'.format(name.replace(" ", "-"))
+    else:
+        url_mylife = 'https://www.mylife.com/people-search/{0}/find/{1}'.format(state, name.replace(" ", "-"))
+        url_beenverified = 'https://www.beenverified.com/people/{1}/{0}/'.format(state, name.replace(" ", "-"))
+    for i in range(50):
+        time.sleep(3)
+        try:
+            browser.get(url_mylife)
+            curPageSource_mylife = BeautifulSoup(browser.page_source, 'html.parser')
+            browser.close()
+
+            firefox = webdriver.Firefox(executable_path=executable_path)
+            firefox.get(url_beenverified)
+            curPageSource_beenverified = BeautifulSoup(firefox.page_source, 'html.parser')
+            firefox.close()
+        except Exception as err:
+            print(str(err))
+            if 'Connection a' in str(err):
+                continue
+            if 'Connection b' in str(err):
+                continue
+            restartfirefox()
+            browser = webdriver.Firefox(firefox_profile=fp, capabilities=firefox_capabilities, options=options,
+                                        executable_path=executable_path)
+            browser.delete_all_cookies()
+            browser.set_page_load_timeout(30)
+            browser.set_script_timeout(30)
+            continue
+        save_content_mylife(curPageSource_mylife, name)
+        save_content_beenverified(curPageSource_beenverified, name)
+        print(result)
+        return result
+        break
+
+def to_do(name, state):
+    return get_url(name, state)
+
+
+# (post / get) action
+class TodoList(Resource):
+    def post(self):
+        """
+        add a new user: curl http://127.0.0.1:5000/users -X POST -d "name=Justin&state=az" -H "Authorization: token justin"
+        """
+        args = parser_put.parse_args()
+        # create a new user
+        name = args['name']
+        state = args['state']
+        info = {"info": to_do(name, state)}
+        return info, 201
+
+
+api.add_resource(TodoList, "/users")
+
+if __name__ == "__main__":
+    app.run(debug=True)
